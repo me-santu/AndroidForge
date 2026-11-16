@@ -28,7 +28,7 @@ jobs:
 
       - name: Extract DocuScan ZIP
         run: |
-          ZIP=$(ls -t input/*.zip | head -n 1)
+          ZIP="input/docuscan.zip"
           echo "Using ZIP: $ZIP"
 
           mkdir -p "$RUNNER_TEMP/docuscan"
