@@ -1,0 +1,78 @@
+
+name: Build DocuScan APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Extract DocuScan project
+        shell: bash
+        run: |
+          ZIP=$(ls -t input/*.zip 2>/dev/null | head -n 1)
+
+          if [ -z "$ZIP" ]; then
+            echo "ERROR: No ZIP found in input folder"
+            exit 1
+          fi
+
+          echo "Using ZIP: $ZIP"
+          mkdir -p "$RUNNER_TEMP/docuscan"
+          unzip -q "$ZIP" -d "$RUNNER_TEMP/docuscan"
+
+          GRADLEW=$(find "$RUNNER_TEMP/docuscan" -type f -name gradlew | head -n 1)
+
+          if [ -z "$GRADLEW" ]; then
+            echo "ERROR: Gradle wrapper not found in ZIP"
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$GRADLEW")
+          chmod +x "$GRADLEW"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Build Debug APK
+        shell: bash
+        run: |
+          cd "$PROJECT_DIR"
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Collect APK
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/apk"
+          find "$PROJECT_DIR" -type f \
+            -path '*/build/outputs/apk/debug/*.apk' \
+            -exec cp {} "$RUNNER_TEMP/apk/" \;
+
+          if [ -z "$(ls -A "$RUNNER_TEMP/apk")" ]; then
+            echo "ERROR: APK not generated"
+            exit 1
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DocuScan-APK
+          path: ${{ runner.temp }}/apk/*.apk
+          retention-days: 7
+          
