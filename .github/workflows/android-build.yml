@@ -12,36 +12,53 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17 (Temurin)
-        uses: actions/setup-java@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
 
-      - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses > /dev/null || true
+      - name: Accept SDK licenses
+        run: yes | sdkmanager --licenses || true
 
-      - name: Prepare debug keystore
+      - name: Extract DocuScan ZIP
         run: |
-          if [ ! -f debug.keystore ] && [ -f debug.keystore.base64 ]; then
-            base64 -d debug.keystore.base64 > debug.keystore
+          ZIP=$(ls -t input/*.zip | head -n 1)
+          echo "Using ZIP: $ZIP"
+
+          mkdir -p "$RUNNER_TEMP/docuscan"
+          unzip -q "$ZIP" -d "$RUNNER_TEMP/docuscan"
+
+          GRADLEW=$(find "$RUNNER_TEMP/docuscan" -type f -name gradlew | head -n 1)
+
+          if [ -z "$GRADLEW" ]; then
+            echo "ERROR: gradlew not found"
+            exit 1
           fi
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Grant execute permission for Gradle Wrapper
-        run: chmod +x gradlew
+          PROJECT_DIR=$(dirname "$GRADLEW")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Build Debug APK
-        run: ./gradlew --no-daemon assembleDebug
+        run: |
+          cd "$PROJECT_DIR"
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
 
-      - name: Upload Debug APK
+      - name: Collect APK
+        run: |
+          mkdir -p "$RUNNER_TEMP/apk"
+          find "$PROJECT_DIR" -path '*/build/outputs/apk/debug/*.apk' -exec cp {} "$RUNNER_TEMP/apk/" \;
+          test -n "$(ls -A "$RUNNER_TEMP/apk")"
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: DocuScan-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+          path: ${{ runner.temp }}/apk/*.apk
+          
