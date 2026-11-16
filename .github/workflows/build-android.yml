@@ -271,18 +271,16 @@ jobs:
       # ---------------------------------------------------------------------
       # Step 8: Restore Gradle cache (per-project, across workflow runs)
       # ---------------------------------------------------------------------
-      - name: Restore Gradle cache
-        if: steps.toolchain.outputs.needs_gradle == 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            /root/.gradle/caches
-            /root/.gradle/wrapper
-            ${{ steps.extract.outputs.project_root }}/.gradle
-                              key: gradle-${{ github.sha }}
-          restore-keys: |
-            gradle-${{ steps.toolchain.outputs.gradle_version }}-
-            gradle-
+      uses: actions/cache@v4
+with:
+  path: |
+    /root/.gradle/caches
+    /root/.gradle/wrapper
+    ${{ steps.extract.outputs.project_root }}/.gradle
+  key: gradle-${{ github.sha }}
+  restore-keys: |
+    gradle-${{ steps.toolchain.outputs.gradle_version }}-
+    gradle-
 
       # ---------------------------------------------------------------------
       # Step 9: Restore Flutter/Dart cache (for Flutter projects)
