@@ -4,9 +4,13 @@ name: DocuScan Android APK
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
@@ -27,8 +31,19 @@ jobs:
         run: yes | sdkmanager --licenses || true
 
       - name: Extract DocuScan ZIP
+        shell: bash
         run: |
+          set -e
+
           ZIP="input/docuscan.zip"
+
+          if [ ! -f "$ZIP" ]; then
+            echo "ERROR: ZIP not found: $ZIP"
+            echo "Available ZIP files:"
+            ls -la input/
+            exit 1
+          fi
+
           echo "Using ZIP: $ZIP"
 
           mkdir -p "$RUNNER_TEMP/docuscan"
@@ -37,16 +52,21 @@ jobs:
           GRADLEW=$(find "$RUNNER_TEMP/docuscan" -type f -name gradlew | head -n 1)
 
           if [ -z "$GRADLEW" ]; then
-            echo "ERROR: gradlew not found"
+            echo "ERROR: gradlew not found in ZIP"
+            find "$RUNNER_TEMP/docuscan" -maxdepth 3 -type f | head -n 50
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$GRADLEW")
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-           - name: Generate Debug Keystore
+          echo "Project root: $PROJECT_DIR"
+
+      - name: Generate Debug Keystore
+        shell: bash
         run: |
-          mkdir -p "$PROJECT_DIR"
+          set -e
+
           if [ ! -f "$PROJECT_DIR/debug.keystore" ]; then
             keytool -genkeypair -v \
               -keystore "$PROJECT_DIR/debug.keystore" \
@@ -58,23 +78,38 @@ jobs:
               -validity 10000 \
               -dname "CN=Android Debug,O=Android,C=US"
           fi
-      
-      
+
       - name: Build Debug APK
+        shell: bash
         run: |
+          set -e
           cd "$PROJECT_DIR"
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
 
       - name: Collect APK
+        shell: bash
         run: |
+          set -e
+
           mkdir -p "$RUNNER_TEMP/apk"
-          find "$PROJECT_DIR" -path '*/build/outputs/apk/debug/*.apk' -exec cp {} "$RUNNER_TEMP/apk/" \;
-          test -n "$(ls -A "$RUNNER_TEMP/apk")"
+
+          find "$PROJECT_DIR" \
+            -type f \
+            -path '*/build/outputs/apk/debug/*.apk' \
+            -exec cp {} "$RUNNER_TEMP/apk/" \;
+
+          if [ -z "$(ls -A "$RUNNER_TEMP/apk")" ]; then
+            echo "ERROR: APK not generated"
+            exit 1
+          fi
+
+          ls -lh "$RUNNER_TEMP/apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: DocuScan-APK
           path: ${{ runner.temp }}/apk/*.apk
-          
+          if-no-files-found: error
+          retention-days: 7
